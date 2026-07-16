@@ -422,16 +422,18 @@ function parseJSON(json){
   return rows;
 }
 
-// ── GROUP BY SESI (gap > 3 jam = sesi baru) ─────────────────
-// Satu sesi = rangkaian data tanpa jeda lebih dari 3 jam.
-// Key sesi = tanggal+jam mulai, misalnya "2026-07-02 14:30"
-// sehingga dua kelompok di tanggal yang sama (pagi & sore) jadi sesi terpisah.
+// ── GROUP BY SESI ────────────────────────────────────────────
+// Logika pengelompokan sesi pengeringan:
+// - Sesi baru dimulai jika gap waktu > 6 jam (untuk memisahkan sesi berbeda di hari sama)
+// - Sesi yang melewati tengah malam (lintas hari) tetap satu sesi
+// - Key sesi = tanggal mulai pengeringan (tanggal pertama data masuk)
+// - Dropdown menampilkan "16 Jul → 17 Jul" untuk sesi lintas hari
 function grupBySesi(rows){
   if(!rows.length) return {};
-  const GAP_MS = 3 * 60 * 60 * 1000; // 3 jam
+  const GAP_MS = 6 * 60 * 60 * 1000; // 6 jam — cukup besar untuk toleransi lintas tengah malam
   const sorted = [...rows].sort((a,b)=>a.waktu.localeCompare(b.waktu));
 
-  // Pisahkan ke grup berdasarkan gap waktu
+  // Pisahkan ke grup berdasarkan gap waktu > 6 jam
   const groups = [];
   let cur = [sorted[0]];
   for(let i = 1; i < sorted.length; i++){
@@ -446,16 +448,13 @@ function grupBySesi(rows){
   }
   groups.push(cur);
 
-  // Buat map dengan key = "tanggal jam-mulai" agar unik
+  // Buat map — key = tanggal mulai sesi
   const map = {};
   groups.forEach(grp=>{
-    // Key: tanggal pertama + jam mulai (HH:MM) — unik per sesi
-    const firstWaktu = grp[0].waktu; // "2026-07-02 14:30"
-    const key = firstWaktu.slice(0,10); // tanggal saja sebagai primary key
-    // Jika key sudah ada (dua sesi di tanggal sama), pakai waktu mulai sebagai suffix
-    const baseKey = firstWaktu.slice(0,10);
+    const baseKey  = grp[0].waktu.slice(0,10); // tanggal mulai
+    // Jika ada dua sesi di tanggal sama, tambahkan jam mulai sebagai suffix
     const finalKey = map[baseKey] !== undefined
-      ? firstWaktu.slice(0,16) // "2026-07-02 14:30"
+      ? grp[0].waktu.slice(0,16)
       : baseKey;
     map[finalKey] = grp;
 
@@ -468,6 +467,7 @@ function grupBySesi(rows){
   });
   return map;
 }
+
 
 // ── STATE ────────────────────────────────────────────────────
 let allData={}, chart1=null, chart2=null, refreshTimer=null;
@@ -508,13 +508,18 @@ function isiDropdown(keys){
     const o=document.createElement('option');
     o.value=k;
     const rows=allData[k]||[];
-    const dates=[...new Set(rows.map(r=>r.tgl))];
-    // Tampilkan label: tanggal + jam mulai jika key punya waktu
-    const hasTime = k.length > 10;
-    const jamMulai = hasTime ? ' (mulai '+k.slice(11,16)+')' : '';
-    o.textContent = dates.length>1
-      ? '★ '+fmtTgl(dates[0])+' → '+fmtTgl(dates[dates.length-1])+jamMulai
-      : fmtTgl(k.slice(0,10))+jamMulai;
+    // Ambil semua tanggal unik dalam sesi ini
+    const dates=[...new Set(rows.map(r=>r.tgl))].sort();
+    const tglMulai = dates[0];
+    const tglAkhir = dates[dates.length-1];
+    const jamMulai = rows.length ? rows[0].wkt.slice(0,5) : '';
+    const crossDay  = dates.length > 1;
+    // Label: selalu tampilkan tanggal mulai, tambah tanggal akhir jika lintas hari
+    if(crossDay){
+      o.textContent = '★ '+fmtTgl(tglMulai)+' → '+fmtTgl(tglAkhir)+' (mulai '+jamMulai+')';
+    } else {
+      o.textContent = fmtTgl(tglMulai)+(jamMulai?' (mulai '+jamMulai+')':'');
+    }
     sel.appendChild(o);
   });
   if(prev&&keys.includes(prev)) sel.value=prev;
