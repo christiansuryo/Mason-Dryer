@@ -395,6 +395,9 @@ function parseWkt(raw){
 }
 
 // ── PARSE JSON dari Apps Script ──────────────────────────────
+// Strategi: gabungkan tanggal+waktu sebagai pair untuk mendapat datetime WIB yang benar
+// Google Sheets kadang export waktu sebagai Date object (timezone-aware)
+// kadang sebagai string biasa — perlu normalisasi konsisten
 function parseJSON(json){
   if(!Array.isArray(json)||json.length<2) return [];
   const hdr = json[0].map(h=>String(h).trim().toLowerCase().replace(/\s+/g,''));
@@ -409,8 +412,30 @@ function parseJSON(json){
   const rows = [];
   for(let i=1;i<json.length;i++){
     const row = json[i];
-    const tgl = parseTgl(row[iA]);
-    const wkt = parseWkt(row[iB]);
+    const rawTgl = row[iA];
+    const rawWkt = row[iB];
+
+    // Jika kolom Waktu adalah Date object dari Sheets (format 1899 atau ISO)
+    // → rekonstruksi WIB dari UTC hours
+    // Jika kolom Waktu adalah string biasa "HH:MM:SS"
+    // → ambil langsung, lalu gabung dengan tanggal yang sudah diparse
+
+    const wktStr = String(rawWkt||'').trim();
+    const tglStr = String(rawTgl||'').trim();
+    let tgl='', wkt='';
+
+    if(wktStr.includes('T') || tglStr.includes('T')){
+      // Format ISO — pakai parseTgl dan parseWkt yang sudah ada
+      tgl = parseTgl(rawTgl);
+      wkt = parseWkt(rawWkt);
+    } else {
+      // Format string biasa dari Apps Script: "2026-07-16" dan "23:50:29"
+      // Tidak perlu koreksi timezone — ambil langsung
+      tgl = tglStr.slice(0,10);
+      const m = wktStr.match(/^(\d{1,2}):(\d{2})/);
+      wkt = m ? p2(m[1])+':'+p2(m[2]) : '00:00';
+    }
+
     if(!tgl||tgl.length<10) continue;
     const waktu = tgl+' '+wkt;
     const m1 = parseFloat(row[iM1])||0;
