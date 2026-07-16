@@ -6,7 +6,18 @@
 <title>Dashboard Suhu Mason Dryer — Kopi Robusta Gumitir</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script>
+  // Fallback ke CDN lain jika gstatic gagal load
+  if(typeof firebase === 'undefined'){
+    document.write('<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.0/firebase-app-compat.min.js"><\/script>');
+  }
+</script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script>
+  if(typeof firebase === 'undefined' || !firebase.database){
+    document.write('<script src="https://cdn.jsdelivr.net/npm/firebase@10.12.0/firebase-database-compat.min.js"><\/script>');
+  }
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;}
 body{font-family:system-ui,-apple-system,sans-serif;background:#f5f4f0;color:#1a1a18;font-size:14px;}
@@ -573,13 +584,44 @@ function updateMetrics(rows){
   } else { cdBanner.style.display='none'; }
 
   // Status alat
-  const ab=document.getElementById('alat-badge');
-  const on1=last.s1==='ON', on2=last.s2==='ON';
-  ab.style.display='inline-block';
-  if(on1&&on2){ ab.textContent='Mason 1 & 2: ON'; ab.style.background='#EAF3DE'; ab.style.color='#27500A'; }
-  else if(on1){ ab.textContent='Mason 1: ON | M2: OFF'; ab.style.background='#EAF3DE'; ab.style.color='#27500A'; }
-  else if(on2){ ab.textContent='Mason 1: OFF | M2: ON'; ab.style.background='#EAF3DE'; ab.style.color='#27500A'; }
-  else { ab.textContent='Alat: OFF'; ab.style.background='#f5f4f0'; ab.style.color='#888780'; }
+  // Jika data terakhir > 15 menit yang lalu → asumsikan alat OFF
+  const ab = document.getElementById('alat-badge');
+  const lastTime    = new Date(last.waktu).getTime();
+  const menitSejak  = (Date.now() - lastTime) / 60000;
+  const alatTimeout = menitSejak > 30;
+
+  // Update label waktu terakhir di header
+  const lupdEl = document.getElementById('lupd');
+  if(lupdEl){
+    if(menitSejak < 1){
+      lupdEl.textContent = 'Update: baru saja';
+    } else if(menitSejak < 60){
+      lupdEl.textContent = 'Data terakhir: '+Math.round(menitSejak)+' mnt lalu';
+    } else {
+      lupdEl.textContent = 'Data terakhir: '+Math.round(menitSejak/60*10)/10+' jam lalu';
+    }
+  }
+
+  ab.style.display = 'inline-block';
+  // Format waktu pembacaan terakhir
+  const tglTerakhir = last.waktu.slice(0,10);
+  const jamTerakhir = last.waktu.slice(11,16);
+  const labelTerakhir = '· Terakhir: '+fmtTgl(tglTerakhir)+' '+jamTerakhir;
+
+  if(alatTimeout){
+    // Tampilkan status OFF + info waktu pembacaan terakhir
+    ab.textContent = 'Alat: OFF '+labelTerakhir;
+    ab.style.background = '#f5f4f0'; ab.style.color = '#888780';
+    ab.style.border = '1px solid #d3d1c7';
+    ab.style.borderRadius = '12px';
+  } else {
+    ab.style.border = 'none';
+    const on1 = last.s1==='ON', on2 = last.s2==='ON';
+    if(on1&&on2){  ab.textContent='Mason 1 & 2: ON';       ab.style.background='#EAF3DE'; ab.style.color='#27500A'; }
+    else if(on1){  ab.textContent='Mason 1: ON | M2: OFF'; ab.style.background='#EAF3DE'; ab.style.color='#27500A'; }
+    else if(on2){  ab.textContent='Mason 1: OFF | M2: ON'; ab.style.background='#EAF3DE'; ab.style.color='#27500A'; }
+    else {         ab.textContent='Alat: OFF';              ab.style.background='#f5f4f0'; ab.style.color='#888780'; }
+  }
 }
 
 // ── RENDER LOG (layar) — hanya tampilkan baris ON ────────────
@@ -873,11 +915,7 @@ async function testKoneksi(){
   if(!url){ lg('[ERROR] URL kosong','#BF616A'); return; }
   lg('Mencoba fetch...','#e8e6e0');
   try{
-    // Tambah ?action=getData untuk request data dari Apps Script
-    const fetchUrl = url.includes('script.google.com/macros')
-      ? url + (url.includes('?') ? '&' : '?') + 'action=getData'
-      : url;
-    const res=await fetch(fetchUrl,{redirect:'follow'});
+    const res=await fetch(url,{redirect:'follow'});
     lg('HTTP status: '+res.status,res.ok?'#A3BE8C':'#BF616A');
     if(!res.ok){ lg('[ERROR] Server menolak. Cek deployment Apps Script.','#BF616A'); return; }
     const txt=await res.text();
@@ -917,9 +955,7 @@ async function muat(){
 
   try{
     if(!url.includes('script.google.com/macros')) throw new Error('Gunakan URL Apps Script (script.google.com/macros/s/.../exec), bukan link spreadsheet biasa.');
-    // Tambah ?action=getData agar Apps Script tahu ini request data, bukan halaman
-    const dataUrl = url + (url.includes('?') ? '&' : '?') + 'action=getData';
-    const res=await fetch(dataUrl,{redirect:'follow'});
+    const res=await fetch(url,{redirect:'follow'});
     if(!res.ok) throw new Error('HTTP '+res.status+' — cek deployment Apps Script.');
     const txt=await res.text();
     let json;
@@ -1046,9 +1082,14 @@ const FB_CONFIG = {
   messagingSenderId: "163027164401",
   appId:             "1:163027164401:web:d283d3668eb6f3c7e29d50"
 };
-firebase.initializeApp(FB_CONFIG);
-const db = firebase.database();
-const CONFIG_REF = db.ref('config/apps_script_url');
+// Pastikan Firebase SDK sudah load sebelum init
+if(typeof firebase === 'undefined'){
+  console.error('[Firebase] SDK belum load — cek koneksi internet');
+} else {
+  firebase.initializeApp(FB_CONFIG);
+}
+const db = (typeof firebase !== 'undefined') ? firebase.database() : null;
+const CONFIG_REF = db ? db.ref('config/apps_script_url') : null;
 
 // ── URL SIMPAN / UBAH (Firebase-backed) ──────────────────────
 function modeDisplay(url){
@@ -1082,6 +1123,7 @@ function simpanURL(){
   const btn = document.getElementById('btn-simpan');
   btn.textContent = '⏳ Menyimpan...';
   btn.disabled = true;
+  if(!CONFIG_REF){ modeDisplay(url); muat(); return; }
   CONFIG_REF.set(url)
     .then(()=>{
       console.log('[Firebase] URL tersimpan OK');
@@ -1107,6 +1149,7 @@ function ubahURL(){
   modeEdit();
   document.getElementById('stxt').textContent = 'Memuat konfigurasi...';
 
+  if(!CONFIG_REF){ modeEdit(); muat(); return; }
   CONFIG_REF.once('value')
     .then(snapshot=>{
       const url = snapshot.val();
@@ -1132,7 +1175,7 @@ function ubahURL(){
     });
 
   // Realtime listener — kalau URL diubah dari device lain, auto-update
-  CONFIG_REF.on('value', snapshot=>{
+  if(CONFIG_REF) CONFIG_REF.on('value', snapshot=>{
     const url = snapshot.val();
     if(!url) return;
     const current = document.getElementById('iurl').value || document.getElementById('url-display').title;
