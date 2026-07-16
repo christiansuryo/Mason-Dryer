@@ -3,9 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<meta http-equiv="Pragma" content="no-cache">
-<meta http-equiv="Expires" content="0">
+
 <title>Dashboard Suhu Mason Dryer — Kopi Robusta Gumitir</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
@@ -810,7 +808,7 @@ function buatGrafik(rows){
       labels: labels,
       datasets: [
         {label:'Standar', data:stdData, borderColor:'#185FA5', borderWidth:2, pointRadius:0, tension:0.3, fill:false},
-        {label:'Mason 1', data:m1Data, borderColor:'#1D9E75', backgroundColor:'rgba(29,158,117,0.07)', borderWidth:2.5, pointRadius:n<=80?2:0, pointBackgroundColor:'#1D9E75', tension:0.2, fill:true, spanGaps:false},
+        {label:'Mason 1', data:m1Data, borderColor:'#1D9E75', backgroundColor:'rgba(29,158,117,0.07)', borderWidth:2.5, pointRadius:0, pointBackgroundColor:'#1D9E75', tension:0.2, fill:true, spanGaps:false},
         maxDS(mx1, n, '#E24B4A')
       ]
     },
@@ -829,7 +827,7 @@ function buatGrafik(rows){
       labels: labels,
       datasets: [
         {label:'Standar', data:stdData, borderColor:'#185FA5', borderWidth:2, pointRadius:0, tension:0.3, fill:false},
-        {label:'Mason 2', data:m2Data, borderColor:'#D85A30', backgroundColor:'rgba(216,90,48,0.07)', borderWidth:2.5, pointRadius:n<=80?2:0, pointBackgroundColor:'#D85A30', tension:0.2, fill:true, spanGaps:false},
+        {label:'Mason 2', data:m2Data, borderColor:'#D85A30', backgroundColor:'rgba(216,90,48,0.07)', borderWidth:2.5, pointRadius:0, pointBackgroundColor:'#D85A30', tension:0.2, fill:true, spanGaps:false},
         maxDS(mx2, n, '#E24B4A')
       ]
     },
