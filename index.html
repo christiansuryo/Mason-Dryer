@@ -439,10 +439,14 @@ function parseJSON(json){
     if(!tgl||tgl.length<10) continue;
     const waktu = tgl+' '+wkt;
     // Filter: buang baris dengan timestamp masa depan (data antrian dengan RTC salah)
-    // Toleransi 30 menit ke depan untuk menghindari perbedaan jam kecil
-    const waktuMs = new Date(waktu).getTime();
-    const nowMs   = Date.now() + 30*60*1000;
-    if(waktuMs > nowMs) continue;
+    // Parse waktu sebagai UTC untuk perbandingan yang konsisten
+    // waktu format "2026-07-17 23:53" → tambah Z agar diperlakukan UTC
+    const waktuMs = new Date(waktu.replace(' ','T')+'Z').getTime();
+    const nowMs   = Date.now() + 30*60*1000; // toleransi 30 menit
+    if(waktuMs > nowMs){
+      console.warn('[filter] Buang baris masa depan:', waktu);
+      continue;
+    }
     const m1 = parseFloat(row[iM1])||0;
     const m2 = parseFloat(row[iM2])||0;
     const s1 = String(row[iS1]||'').replace(/[^A-Za-z]/g,'').toUpperCase();
@@ -482,9 +486,21 @@ function grupBySesi(rows){
   }
   groups.push(cur);
 
+  // Filter sesi yang waktu mulainya di masa depan (data RTC/NTP salah)
+  const nowMs = Date.now();
+  const validGroups = groups.filter(grp=>{
+    // Waktu sesi pertama sebagai UTC
+    const startMs = new Date(grp[0].waktu.replace(' ','T')+'Z').getTime();
+    if(startMs > nowMs + 30*60*1000){
+      console.warn('[sesi] Buang sesi masa depan:', grp[0].waktu, grp.length+' baris');
+      return false;
+    }
+    return true;
+  });
+
   // Buat map — key = tanggal mulai sesi
   const map = {};
-  groups.forEach(grp=>{
+  validGroups.forEach(grp=>{
     const baseKey  = grp[0].waktu.slice(0,10);
     const finalKey = map[baseKey] !== undefined
       ? grp[0].waktu.slice(0,16)
