@@ -423,17 +423,21 @@ function parseJSON(json){
 }
 
 // ── GROUP BY SESI ────────────────────────────────────────────
-// Logika pengelompokan sesi pengeringan:
-// - Sesi baru dimulai jika gap waktu > 6 jam (untuk memisahkan sesi berbeda di hari sama)
-// - Sesi yang melewati tengah malam (lintas hari) tetap satu sesi
-// - Key sesi = tanggal mulai pengeringan (tanggal pertama data masuk)
-// - Dropdown menampilkan "16 Jul → 17 Jul" untuk sesi lintas hari
+// Sort GLOBAL dulu berdasarkan waktu lengkap (datetime),
+// baru pisahkan per sesi berdasarkan gap > 6 jam.
+// Ini mengatasi data tidak urut dari antrian offline SD card.
 function grupBySesi(rows){
   if(!rows.length) return {};
-  const GAP_MS = 6 * 60 * 60 * 1000; // 6 jam — cukup besar untuk toleransi lintas tengah malam
-  const sorted = [...rows].sort((a,b)=>a.waktu.localeCompare(b.waktu));
+  const GAP_MS = 6 * 60 * 60 * 1000; // 6 jam
 
-  // Pisahkan ke grup berdasarkan gap waktu > 6 jam
+  // Sort global berdasarkan waktu penuh
+  const sorted = [...rows].sort((a,b)=>{
+    const da = new Date(a.waktu).getTime();
+    const db = new Date(b.waktu).getTime();
+    return da - db;
+  });
+
+  // Pisahkan ke grup berdasarkan gap > 6 jam
   const groups = [];
   let cur = [sorted[0]];
   for(let i = 1; i < sorted.length; i++){
@@ -451,8 +455,7 @@ function grupBySesi(rows){
   // Buat map — key = tanggal mulai sesi
   const map = {};
   groups.forEach(grp=>{
-    const baseKey  = grp[0].waktu.slice(0,10); // tanggal mulai
-    // Jika ada dua sesi di tanggal sama, tambahkan jam mulai sebagai suffix
+    const baseKey  = grp[0].waktu.slice(0,10);
     const finalKey = map[baseKey] !== undefined
       ? grp[0].waktu.slice(0,16)
       : baseKey;
