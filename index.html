@@ -415,23 +415,25 @@ function parseJSON(json){
     const row = json[i];
     const rawTgl = row[iA];
     const rawWkt = row[iB];
-
-    // Jika kolom Waktu adalah Date object dari Sheets (format 1899 atau ISO)
-    // → rekonstruksi WIB dari UTC hours
-    // Jika kolom Waktu adalah string biasa "HH:MM:SS"
-    // → ambil langsung, lalu gabung dengan tanggal yang sudah diparse
-
     const wktStr = String(rawWkt||'').trim();
     const tglStr = String(rawTgl||'').trim();
     let tgl='', wkt='';
 
     if(wktStr.includes('T') || tglStr.includes('T')){
-      // Format ISO — pakai parseTgl dan parseWkt yang sudah ada
       tgl = parseTgl(rawTgl);
       wkt = parseWkt(rawWkt);
+      // Koreksi: epoch 1899-12-29 = waktu WIB dini hari yang tanggalnya
+      // disimpan Sheets sebagai hari berikutnya → kurangi 1 hari
+      if(wktStr.includes('1899-12-29')){
+        const utcH = new Date(wktStr).getUTCHours();
+        if(utcH < 17){
+          const d = new Date(tgl+'T00:00:00Z');
+          d.setUTCDate(d.getUTCDate()-1);
+          tgl = d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate());
+        }
+      }
     } else {
-      // Format string biasa dari Apps Script: "2026-07-16" dan "23:50:29"
-      // Tidak perlu koreksi timezone — ambil langsung
+      // String biasa dari Apps Script baru (Asia/Jakarta) — ambil langsung
       tgl = tglStr.slice(0,10);
       const m = wktStr.match(/^(\d{1,2}):(\d{2})/);
       wkt = m ? p2(m[1])+':'+p2(m[2]) : '00:00';
@@ -439,7 +441,6 @@ function parseJSON(json){
 
     if(!tgl||tgl.length<10) continue;
     const waktu = tgl+' '+wkt;
-
     const m1 = parseFloat(row[iM1])||0;
     const m2 = parseFloat(row[iM2])||0;
     const s1 = String(row[iS1]||'').replace(/[^A-Za-z]/g,'').toUpperCase();
@@ -448,6 +449,7 @@ function parseJSON(json){
   }
   return rows;
 }
+
 
 // ── GROUP BY SESI ────────────────────────────────────────────
 // Sort GLOBAL dulu berdasarkan waktu lengkap (datetime),
@@ -963,7 +965,40 @@ async function testKoneksi(){
     lg('Baris 1: '+JSON.stringify(json[1]),'#D8DEE9');
     const rows=parseJSON(json);
     lg('Baris berhasil di-parse: '+rows.length,rows.length>0?'#A3BE8C':'#BF616A');
-    if(rows.length){ lg('Contoh: '+JSON.stringify(rows[0]),'#A3BE8C'); lg('[OK] Siap! Klik Hubungkan.','#A3BE8C'); }
+    if(rows.length){
+      lg('Baris pertama: '+JSON.stringify(rows[0]),'#A3BE8C');
+      lg('Baris terakhir: '+JSON.stringify(rows[rows.length-1]),'#A3BE8C');
+      // Simulasi grupBySesi — tampilkan sesi yang terbentuk
+      const sesi = grupBySesi(rows);
+      const keys = Object.keys(sesi).sort();
+      lg('Sesi terbentuk ('+keys.length+'): '+keys.join(', '),'#88C0D0');
+      // Tampilkan detail tiap sesi
+      keys.forEach(k=>{
+        const grp = sesi[k];
+        lg('  Sesi '+k+': '+grp.length+' baris | '+grp[0].waktu+' → '+grp[grp.length-1].waktu,'#88C0D0');
+      });
+      // Cari baris dengan waktu 23:xx untuk diagnosa
+      const baris23 = rows.filter(r=>r.wkt.startsWith('23'));
+      if(baris23.length){
+        lg('Baris dengan waktu 23:xx ('+baris23.length+'):','#EBCB8B');
+        baris23.forEach(r=>lg('  '+JSON.stringify(r),'#EBCB8B'));
+        // Cari raw JSON untuk baris ini
+        lg('Raw JSON untuk baris 23:xx:','#EBCB8B');
+        const hdr=json[0].map(h=>String(h).trim().toLowerCase().replace(/\s+/g,''));
+        const iB=hdr.findIndex(x=>x.includes('waktu')||x.includes('time'));
+        json.slice(1).forEach((row,i)=>{
+          const wktRaw=String(row[iB]||'');
+          if(wktRaw.includes('T')){
+            const d=new Date(wktRaw);
+            const hUTC=d.getUTCHours();
+            if(hUTC>=16&&hUTC<=17){
+              lg('  Baris '+(i+2)+': '+JSON.stringify(row),'#EBCB8B');
+            }
+          }
+        });
+      }
+      lg('[OK] Siap! Klik Hubungkan.','#A3BE8C');
+    }
     else lg('[WARN] Tidak ada baris valid. Cek format kolom.','#EBCB8B');
   } catch(e){ lg('[ERROR] '+e.message,'#BF616A'); }
 }
