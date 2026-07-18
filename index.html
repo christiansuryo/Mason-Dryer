@@ -6,6 +6,7 @@
 
 <title>Dashboard Suhu Mason Dryer — Kopi Robusta Gumitir</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script>
   // Fallback ke CDN lain jika gstatic gagal load
@@ -154,6 +155,7 @@ footer{text-align:center;font-size:11px;color:#B4B2A9;padding:16px;}
     <button onclick="muat()">↺ Muat ulang</button>
     <button class="btn-brown" onclick="testKoneksi()">&#128270; Test</button>
     <button class="btn-blue" onclick="cetakDashboard()">&#128438; Cetak / PDF</button>
+    <button onclick="generateExcel()" style="background:#217346;color:#fff;border-color:#217346;">&#128196; Form Excel</button>
   </div>
 </header>
 
@@ -1213,44 +1215,138 @@ function ubahURL(){
   modeEdit();
 }
 
-// ── INIT — load URL dari Firebase ────────────────────────────
-(function(){
-  // Tampilkan mode edit dulu sambil fetch Firebase
-  modeEdit();
-  document.getElementById('stxt').textContent = 'Memuat konfigurasi...';
+// ── GENERATE EXCEL FORM XIII PTPN I ──────────────────────────
+const NAMA_MANAJER   = 'Christian Suryo Hadmadi';
+const NAMA_ASSTEKPOL = 'Syaiful Kahfi';
 
-  if(!CONFIG_REF){ modeEdit(); muat(); return; }
+const STD_SUHU_XL = {1:35,2:90,3:120,4:120,5:120,6:120,7:120,8:120,
+                     9:110,10:110,11:105,12:105,13:100,14:100,
+                     15:90,16:90,17:80,18:80,19:80,
+                     20:70,21:70,22:70,23:60,24:60,
+                     25:null,26:null,27:null};
+
+function fmtTglXL(tgl){
+  if(!tgl||tgl.length<10) return tgl||'';
+  const p=tgl.slice(0,10).split('-');
+  return p[2]+'-'+p[1]+'-'+p[0];
+}
+
+function hitungLamaXL(w1,d1,w2,d2){
+  try{
+    const dt1=new Date(d1+'T'+w1+':00');
+    const dt2=new Date(d2+'T'+w2+':00');
+    const h=(dt2-dt1)/3600000;
+    return h>0?h.toFixed(1)+' Jam':'';
+  }catch(e){ return ''; }
+}
+
+function generateExcel(){
+  const rows = rowsForSel();
+  if(!rows.length){ alert('Tidak ada data untuk sesi ini.'); return; }
+
+  // Ambil URL Apps Script dari input/display
+  const appsUrl = document.getElementById('iurl').value ||
+                  document.getElementById('url-display').title || '';
+  if(!appsUrl){
+    alert('URL Apps Script belum diisi. Hubungkan dashboard terlebih dahulu.');
+    return;
+  }
+
+  // Pilih data terbaik per jam
+  const best={};
+  rows.forEach(r=>{
+    const j=r.jam, std=STD_SUHU_XL[j], m1=r.m1;
+    if(!j||j<1||j>27) return;
+    const sel=(std!==null&&std!==undefined&&m1>0)?Math.abs(m1-std):9999;
+    if(!best[j]||sel<best[j].sel) best[j]={...r,sel};
+  });
+
+  const tgl1=rows[0].tgl, w1=rows[0].wkt;
+  const tgl2=rows[rows.length-1].tgl, w2=rows[rows.length-1].wkt;
+  const lama=hitungLamaXL(w1,tgl1,w2,tgl2);
+
+  // Siapkan bestRows sebagai object {jam: {wkt, m1}}
+  const bestRows={};
+  for(let j=1;j<=27;j++){
+    if(best[j]) bestRows[j]={wkt:best[j].wkt, m1:best[j].m1};
+  }
+
+  const payload={
+    tgl1: fmtTglXL(tgl1), w1,
+    tgl2: fmtTglXL(tgl2), w2,
+    lama,
+    manajer:   NAMA_MANAJER,
+    asstekpol: NAMA_ASSTEKPOL,
+    bestRows,
+    action: 'generateForm'
+  };
+
+  // Tampilkan loading
+  const btn=document.querySelector('button[onclick="generateExcel()"]');
+  const origText=btn?btn.textContent:'';
+  if(btn){ btn.textContent='⏳ Membuat...'; btn.disabled=true; }
+
+  const tglLabel=tgl1===tgl2?fmtTglXL(tgl1):fmtTglXL(tgl1)+'_sd_'+fmtTglXL(tgl2);
+  fetch(appsUrl,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(payload),redirect:'follow'})
+  .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+  .then(function(res){
+    if(res.status!=='ok') throw new Error(res.message||'Error server');
+    var bin=atob(res.xlsx), bytes=new Uint8Array(bin.length);
+    for(var i=0;i<bin.length;i++) bytes[i]=bin.charCodeAt(i);
+    var blob=new Blob([bytes],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url; a.download='Form_Pengeringan_Mekanis_'+tglLabel+'.xlsx';
+    a.click(); URL.revokeObjectURL(url);
+    if(btn){btn.textContent=origText;btn.disabled=false;}
+  })
+  .catch(function(err){
+    console.error('[Excel]',err);
+    alert('Gagal generate Excel: '+err.message+'\n\nPastikan Apps Script sudah di-update dengan fungsi doPost().');
+    if(btn){btn.textContent=origText;btn.disabled=false;}
+  })
+}
+
+// ── INIT ─────────────────────────────────────────────────────
+(function(){
+  let saved = '';
+  try{ saved = localStorage.getItem('dash_url') || ''; } catch(e){}
+  if(saved){
+    document.getElementById('iurl').value = saved;
+    modeDisplay(saved);
+  } else {
+    modeEdit();
+  }
+
+  if(!CONFIG_REF){ modeEdit(); muat(); aturRefresh(); return; }
+
   CONFIG_REF.once('value')
-    .then(snapshot=>{
+    .then(function(snapshot){
       const url = snapshot.val();
       if(url){
         document.getElementById('iurl').value = url;
         modeDisplay(url);
-        console.log('[Firebase] URL loaded:', url);
       } else {
-        console.log('[Firebase] Belum ada URL tersimpan');
         modeEdit();
       }
       muat();
     })
-    .catch(err=>{
+    .catch(function(err){
       console.error('[Firebase] Gagal load config:', err);
-      // Fallback ke localStorage
       try{
         const saved = localStorage.getItem('dash_url');
-        if(saved){ document.getElementById('iurl').value = saved; modeDisplay(saved); }
+        if(saved){ document.getElementById('iurl').value=saved; modeDisplay(saved); }
         else { modeEdit(); }
       } catch(e){ modeEdit(); }
       muat();
     });
 
-  // Realtime listener — kalau URL diubah dari device lain, auto-update
-  if(CONFIG_REF) CONFIG_REF.on('value', snapshot=>{
+  if(CONFIG_REF) CONFIG_REF.on('value', function(snapshot){
     const url = snapshot.val();
     if(!url) return;
     const current = document.getElementById('iurl').value || document.getElementById('url-display').title;
     if(url !== current){
-      console.log('[Firebase] URL diperbarui dari device lain:', url);
       document.getElementById('iurl').value = url;
       modeDisplay(url);
       muat();
