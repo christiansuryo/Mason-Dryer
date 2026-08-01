@@ -1274,7 +1274,7 @@ function generateExcel(){
     {width:8},   // D: Suhu Realisasi
     {width:7},   // E: Berat Kg/Blek
     {width:7},   // F: Diperiksa
-    {width:10},  // G: Petugas Shif
+    {width:14},  // G: Petugas Shif
     {width:10},  // H: Pengawas
     {width:10}   // I: Catatan
   ];
@@ -1327,7 +1327,7 @@ function generateExcel(){
   ws.getRow(3).height=20;
   ws.getRow(4).height=20;
   for(var r=5;r<=10;r++) ws.getRow(r).height=20;  // Info form - lebih lapang
-  ws.getRow(11).height=30;  // Header tabel row 1 - cukup untuk "Suhu Udara Biji Kopi"
+  ws.getRow(11).height=40;  // Header tabel row 1 - diperbesar supaya "Suhu Udara Biji Kopi (°C)" tidak terpotong
   ws.getRow(12).height=34;  // Header tabel row 2
   for(var r=13;r<=39;r++) ws.getRow(r).height=18; // Data jam 1-27
   ws.getRow(40).height=14;  // FORM-XIII
@@ -1368,28 +1368,48 @@ function generateExcel(){
     ['Lama Pengeringan :',lama,'','','','','']
   ];
 
+  // Border outline-only untuk blok info form (hanya garis luar, tanpa garis antar kolom/baris)
+  function bdrInfoOutline(r,isLeft,isRight){
+    var o={};
+    if(r===5) o.top={style:'medium'};
+    if(r===10) o.bottom={style:'medium'};
+    if(isLeft) o.left={style:'medium'};
+    if(isRight) o.right={style:'medium'};
+    return o;
+  }
+  var FDnb  ={sz:8,name:'Arial',align:'center'};
+  var FDLnb ={sz:8,name:'Arial',align:'left'};
+
   infoRows.forEach(function(row,i){
     var r=5+i;
     // A:B = label kiri
-    mg(ws,r,1,r,2,row[0],FDL);
-    ws.getCell(r,1).border=bdr('medium','thin','thin','thin');
-    ws.getCell(r,2).border=bdrAll();
+    mg(ws,r,1,r,2,row[0],FDLnb);
+    ws.getCell(r,1).border=bdrInfoOutline(r,true,false);
+    ws.getCell(r,2).border=bdrInfoOutline(r,false,false);
     // C = value kiri
-    sc(ws,r,3,row[1],FD);
+    sc(ws,r,3,row[1],FDnb);
+    ws.getCell(r,3).border=bdrInfoOutline(r,false,false);
     // D = label tengah (Jam :)
-    sc(ws,r,4,row[2],FDL);
+    sc(ws,r,4,row[2],FDLnb);
+    ws.getCell(r,4).border=bdrInfoOutline(r,false,false);
     // E = value tengah (jam)
-    sc(ws,r,5,i===3?w1:i===4?w2:row[3],FD);
+    sc(ws,r,5,i===3?w1:i===4?w2:row[3],FDnb);
+    ws.getCell(r,5).border=bdrInfoOutline(r,false,false);
     // F = kosong (spacer)
-    sc(ws,r,6,'',{sz:8,border:bdrAll()});
+    sc(ws,r,6,'',{sz:8});
+    ws.getCell(r,6).border=bdrInfoOutline(r,false,false);
     // G = label kanan (rata kiri) - Pengeringan Ke, Jumlah Gld, dll
-    sc(ws,r,7,row[4],FDL);
+    sc(ws,r,7,row[4],FDLnb);
+    ws.getCell(r,7).border=bdrInfoOutline(r,false,false);
     // H = value kanan (input operator, kosong)
-    sc(ws,r,8,'',{sz:8,border:bdrAll()});
+    sc(ws,r,8,'',{sz:8});
+    ws.getCell(r,8).border=bdrInfoOutline(r,false,false);
     // I = satuan (Kg, %, M³)
-    sc(ws,r,9,row[6],{sz:8,name:'Arial',align:'left',border:bdr('thin','medium','thin','thin')});
+    sc(ws,r,9,row[6],FDLnb);
+    ws.getCell(r,9).border=bdrInfoOutline(r,false,true);
   });
   sc(ws,10,9,'FORM-XIII',FF);
+  ws.getCell(10,9).border=bdrInfoOutline(10,false,true);
 
   // ── HEADER TABEL ──
   mg(ws,11,1,12,1,'Jam\nKe',FC);
