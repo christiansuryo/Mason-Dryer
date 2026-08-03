@@ -1009,6 +1009,24 @@ async function testKoneksi(){
   } catch(e){ lg('[ERROR] '+e.message,'#BF616A'); }
 }
 
+// ── FETCH DENGAN RETRY (Apps Script kadang 404/error sesaat lalu normal lagi) ──
+async function fetchWithRetry(url, tries, delayMs){
+  tries = tries || 3;
+  delayMs = delayMs || 1500;
+  let lastErr;
+  for(let i=0; i<tries; i++){
+    try{
+      const res = await fetch(url,{redirect:'follow'});
+      if(!res.ok) throw new Error('HTTP '+res.status+' — cek deployment Apps Script.');
+      return res;
+    }catch(e){
+      lastErr = e;
+      if(i < tries-1) await new Promise(r=>setTimeout(r, delayMs));
+    }
+  }
+  throw lastErr;
+}
+
 // ── MUAT DATA ─────────────────────────────────────────────────
 async function muat(){
   const url=document.getElementById('iurl').value.trim();
@@ -1031,8 +1049,7 @@ async function muat(){
 
   try{
     if(!url.includes('script.google.com/macros')) throw new Error('Gunakan URL Apps Script (script.google.com/macros/s/.../exec), bukan link spreadsheet biasa.');
-    const res=await fetch(url,{redirect:'follow'});
-    if(!res.ok) throw new Error('HTTP '+res.status+' — cek deployment Apps Script.');
+    const res=await fetchWithRetry(url,3,1500);
     const txt=await res.text();
     let json;
     try{ json=JSON.parse(txt); } catch(e){ throw new Error('Respons bukan JSON. Cek kode doGet() mengembalikan JSON.'); }
