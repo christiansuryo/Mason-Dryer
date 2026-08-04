@@ -153,6 +153,7 @@ footer{text-align:center;font-size:11px;color:#B4B2A9;padding:16px;}
     <span id="lupd"></span>
     <span id="alat-badge"></span>
     <button onclick="muat()">↺ Muat ulang</button>
+    <button id="btn-history" onclick="toggleHistory()" title="Muat data dari semua tab minggu (bukan cuma minggu ini &amp; sebelumnya)">&#128340; Riwayat: OFF</button>
     <button class="btn-brown" onclick="testKoneksi()">&#128270; Test</button>
     <button class="btn-blue" onclick="cetakDashboard()">&#128438; Cetak / PDF</button>
     <select id="sel-mesin" title="Pilih mesin untuk Form Excel" style="border-radius:6px;padding:4px 6px;">
@@ -1027,6 +1028,19 @@ async function fetchWithRetry(url, tries, delayMs){
   throw lastErr;
 }
 
+// ── MODE RIWAYAT (muat semua tab minggu, bukan cuma minggu ini+sebelumnya) ──
+let historyMode = false;
+function toggleHistory(){
+  historyMode = !historyMode;
+  const btn = document.getElementById('btn-history');
+  if(btn){
+    btn.textContent = historyMode ? '\uD83D\uDD5A Riwayat: ON' : '\uD83D\uDD5A Riwayat: OFF';
+    btn.style.background = historyMode ? '#f59e0b' : '';
+    btn.style.color = historyMode ? '#fff' : '';
+  }
+  muat();
+}
+
 // ── MUAT DATA ─────────────────────────────────────────────────
 async function muat(){
   const url=document.getElementById('iurl').value.trim();
@@ -1049,7 +1063,8 @@ async function muat(){
 
   try{
     if(!url.includes('script.google.com/macros')) throw new Error('Gunakan URL Apps Script (script.google.com/macros/s/.../exec), bukan link spreadsheet biasa.');
-    const res=await fetchWithRetry(url,3,1500);
+    const fetchUrl = url + (historyMode ? (url.includes('?')?'&':'?')+'history=1' : '');
+    const res=await fetchWithRetry(fetchUrl,3,1500);
     const txt=await res.text();
     let json;
     try{ json=JSON.parse(txt); } catch(e){ throw new Error('Respons bukan JSON. Cek kode doGet() mengembalikan JSON.'); }
@@ -1062,7 +1077,7 @@ async function muat(){
     isiDropdown(keys);
     const allZero=rows.every(r=>r.m1===0&&r.m2===0);
     dot.className=allZero?'dot':'dot live';
-    stxt.textContent='Terhubung · '+rows.length+' pembacaan · '+keys.length+' sesi';
+    stxt.textContent=(historyMode?'Riwayat lengkap · ':'Terhubung · ')+rows.length+' pembacaan · '+keys.length+' sesi';
     lupd.textContent='Update: '+new Date().toLocaleTimeString('id-ID');
     ganti();
   } catch(e){
