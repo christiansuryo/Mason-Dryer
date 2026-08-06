@@ -1042,12 +1042,24 @@ function toggleHistory(){
 }
 
 // ── MUAT DATA ─────────────────────────────────────────────────
+let sedangMuat = false;
 async function muat(){
+  if(sedangMuat){
+    console.log('[MUAT] Sudah ada proses muat berjalan, permintaan baru diabaikan supaya tidak menumpuk.');
+    return;
+  }
+  sedangMuat = true;
+  const btnMuat = document.querySelector('button[onclick="muat()"]');
+  const teksAsliBtn = btnMuat ? btnMuat.textContent : '';
+  if(btnMuat){ btnMuat.disabled = true; btnMuat.textContent = '⏳ Memuat...'; }
+
   const url=document.getElementById('iurl').value.trim();
   const dot=document.getElementById('dot');
   const stxt=document.getElementById('stxt');
   const lupd=document.getElementById('lupd');
   document.getElementById('err-guide').style.display='none';
+
+  try {
 
   if(!url){
     allData=buildDemo();
@@ -1086,6 +1098,11 @@ async function muat(){
     document.getElementById('err-msg').textContent=e.message;
     document.getElementById('err-guide').style.display='flex';
     allData=buildDemo(); isiDropdown(Object.keys(allData)); ganti();
+  }
+
+  } finally {
+    sedangMuat = false;
+    if(btnMuat){ btnMuat.disabled = false; btnMuat.textContent = teksAsliBtn || '↺ Muat ulang'; }
   }
 }
 
