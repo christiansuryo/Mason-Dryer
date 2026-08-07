@@ -635,10 +635,10 @@ function updateMetrics(rows){
   // Referensi gabungan untuk indikator umum (kartu "Jam berjalan" & badge
   // fase di atas) — pakai jam yang PALING JAUH di antara kedua mesin,
   // supaya badge mengikuti mesin yang paling aktif/maju prosesnya.
-  const jamRef = Math.max(last.jam1!=null?last.jam1:0, last.jam2!=null?last.jam2:0) || last.jam;
+  const jamRef = Math.max(last.jam1!==undefined?last.jam1:0, last.jam2!==undefined?last.jam2:0) || last.jam;
   const s=getStd(jamRef);
-  const j1 = last.jam1!=null?last.jam1:last.jam;
-  const j2 = last.jam2!=null?last.jam2:last.jam;
+  const j1 = last.jam1!==undefined?last.jam1:last.jam;
+  const j2 = last.jam2!==undefined?last.jam2:last.jam;
   const s1 = getStd(j1), s2 = getStd(j2);
   const d1=s1!==null?last.m1-s1:null;
   const d2=s2!==null?last.m2-s2:null;
@@ -661,8 +661,8 @@ function updateMetrics(rows){
   document.getElementById('m2v').textContent   = rnd(last.m2);
   document.getElementById('m1d').textContent   = 'vs standar: '+fmtDelta(d1);
   document.getElementById('m2d').textContent   = 'vs standar: '+fmtDelta(d2);
-  document.getElementById('m1max').textContent = onRows1.length?'Maks: '+rnd(maxM1)+'°C (Jam '+(jMax1?(jMax1.jam1!=null?jMax1.jam1:jMax1.jam):'—')+')':'Maks: —';
-  document.getElementById('m2max').textContent = onRows2.length?'Maks: '+rnd(maxM2)+'°C (Jam '+(jMax2?(jMax2.jam2!=null?jMax2.jam2:jMax2.jam):'—')+')':'Maks: —';
+  document.getElementById('m1max').textContent = onRows1.length?'Maks: '+rnd(maxM1)+'°C (Jam '+(jMax1?(jMax1.jam1!==undefined?jMax1.jam1:jMax1.jam):'—')+')':'Maks: —';
+  document.getElementById('m2max').textContent = onRows2.length?'Maks: '+rnd(maxM2)+'°C (Jam '+(jMax2?(jMax2.jam2!==undefined?jMax2.jam2:jMax2.jam):'—')+')':'Maks: —';
   document.getElementById('mtot').textContent  = rows.length;
   const dur=Math.round((new Date(rows[rows.length-1].waktu)-new Date(rows[0].waktu))/36e5*10)/10;
   document.getElementById('mdur').textContent  = isNaN(dur)?'—':dur+' jam';
@@ -737,8 +737,8 @@ function renderLog(rows){
     prevTgl=r.tgl;
     if(!anyOn){ offCount++; return; }
     flushOff();
-    const j1 = r.jam1!=null ? r.jam1 : r.jam;
-    const j2 = r.jam2!=null ? r.jam2 : r.jam;
+    const j1 = r.jam1!==undefined ? r.jam1 : r.jam;
+    const j2 = r.jam2!==undefined ? r.jam2 : r.jam;
     const s1=getStd(j1), s2=getStd(j2);
     const f1=getFase(j1), f2=getFase(j2);
     const d1=s1!==null?r.m1-s1:null, d2=s2!==null?r.m2-s2:null;
@@ -842,8 +842,8 @@ function maxDS(val, n, color){
 
 function buatGrafik(rows){
   const labels   = buildLabels(rows);
-  const stdData1 = rows.map(r=>getStd(r.jam1!=null?r.jam1:r.jam));
-  const stdData2 = rows.map(r=>getStd(r.jam2!=null?r.jam2:r.jam));
+  const stdData1 = rows.map(r=>getStd(r.jam1!==undefined?r.jam1:r.jam));
+  const stdData2 = rows.map(r=>getStd(r.jam2!==undefined?r.jam2:r.jam));
   const m1Data   = rows.map(r=>r.s1==='ON'?r.m1:null);
   const m2Data   = rows.map(r=>r.s2==='ON'?r.m2:null);
   const on1      = rows.filter(r=>r.s1==='ON').map(r=>r.m1);
