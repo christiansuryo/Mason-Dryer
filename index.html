@@ -503,6 +503,31 @@ function grupBySesi(rows){
       const menit = (new Date(r.waktu).getTime() - t0) / 60000;
       r.jam = Math.min(26, Math.floor(menit / 60) + 1);
     });
+
+    // Hitung jam ke- TERPISAH per mesin (r.jam1, r.jam2) — dari transisi
+    // OFF→ON PERTAMA masing-masing mesin di dalam sesi ini, bukan dari
+    // t0 gabungan di atas. Ini sumber data tunggal dipakai oleh grafik,
+    // kartu ringkasan, dan log — supaya kurva/label Standar tiap mesin
+    // mengikuti jam mulai mesin itu sendiri. Penting saat kedua mesin
+    // berjalan di rentang waktu berbeda dalam satu sesi (misal M1 sudah
+    // operasional, M2 baru menyusul uji coba).
+    function t0Mesin(sField){
+      const on = grp.find(r=>r[sField]==='ON');
+      return on ? new Date(on.waktu).getTime() : null;
+    }
+    const t0m1 = t0Mesin('s1');
+    const t0m2 = t0Mesin('s2');
+    grp.forEach(r=>{
+      const tNow = new Date(r.waktu).getTime();
+      if(t0m1!==null){
+        const menit1 = (tNow - t0m1) / 60000;
+        r.jam1 = menit1<0 ? null : Math.min(26, Math.floor(menit1/60)+1);
+      } else { r.jam1 = null; }
+      if(t0m2!==null){
+        const menit2 = (tNow - t0m2) / 60000;
+        r.jam2 = menit2<0 ? null : Math.min(26, Math.floor(menit2/60)+1);
+      } else { r.jam2 = null; }
+    });
   });
   return map;
 }
@@ -587,30 +612,37 @@ function buildLabels(rows){
 function updateMetrics(rows){
   if(!rows.length) return;
   const last=rows[rows.length-1];
-  const s=getStd(last.jam);
-  const d1=s!==null?last.m1-s:null;
-  const d2=s!==null?last.m2-s:null;
+  // Referensi gabungan untuk indikator umum (kartu "Jam berjalan" & badge
+  // fase di atas) — pakai jam yang PALING JAUH di antara kedua mesin,
+  // supaya badge mengikuti mesin yang paling aktif/maju prosesnya.
+  const jamRef = Math.max(last.jam1!=null?last.jam1:0, last.jam2!=null?last.jam2:0) || last.jam;
+  const s=getStd(jamRef);
+  const j1 = last.jam1!=null?last.jam1:last.jam;
+  const j2 = last.jam2!=null?last.jam2:last.jam;
+  const s1 = getStd(j1), s2 = getStd(j2);
+  const d1=s1!==null?last.m1-s1:null;
+  const d2=s2!==null?last.m2-s2:null;
   const onRows1=rows.filter(r=>r.s1==='ON');
   const onRows2=rows.filter(r=>r.s2==='ON');
   const maxM1=onRows1.length?Math.max(...onRows1.map(r=>r.m1)):0;
   const maxM2=onRows2.length?Math.max(...onRows2.map(r=>r.m2)):0;
   const jMax1=onRows1.find(r=>r.m1===maxM1);
   const jMax2=onRows2.find(r=>r.m2===maxM2);
-  const f=getFase(last.jam);
+  const f=getFase(jamRef);
 
   // Tanggal sesi
   const key=document.getElementById('sel-tgl').value;
   const dates=[...new Set((allData[key]||[]).map(r=>r.tgl))];
   document.getElementById('m-tgl').textContent =
     dates.length>1 ? fmtTgl(dates[0])+' – '+fmtTgl(dates[dates.length-1]) : fmtTgl(key);
-  document.getElementById('m-jam').textContent = last.jam;
+  document.getElementById('m-jam').textContent = jamRef;
   document.getElementById('m-std').textContent = 'Standar: '+(s!==null?s+'°C':'Udara segar');
   document.getElementById('m1v').textContent   = rnd(last.m1);
   document.getElementById('m2v').textContent   = rnd(last.m2);
   document.getElementById('m1d').textContent   = 'vs standar: '+fmtDelta(d1);
   document.getElementById('m2d').textContent   = 'vs standar: '+fmtDelta(d2);
-  document.getElementById('m1max').textContent = onRows1.length?'Maks: '+rnd(maxM1)+'°C (Jam '+(jMax1?jMax1.jam:'—')+')':'Maks: —';
-  document.getElementById('m2max').textContent = onRows2.length?'Maks: '+rnd(maxM2)+'°C (Jam '+(jMax2?jMax2.jam:'—')+')':'Maks: —';
+  document.getElementById('m1max').textContent = onRows1.length?'Maks: '+rnd(maxM1)+'°C (Jam '+(jMax1?(jMax1.jam1!=null?jMax1.jam1:jMax1.jam):'—')+')':'Maks: —';
+  document.getElementById('m2max').textContent = onRows2.length?'Maks: '+rnd(maxM2)+'°C (Jam '+(jMax2?(jMax2.jam2!=null?jMax2.jam2:jMax2.jam):'—')+')':'Maks: —';
   document.getElementById('mtot').textContent  = rows.length;
   const dur=Math.round((new Date(rows[rows.length-1].waktu)-new Date(rows[0].waktu))/36e5*10)/10;
   document.getElementById('mdur').textContent  = isNaN(dur)?'—':dur+' jam';
@@ -685,18 +717,32 @@ function renderLog(rows){
     prevTgl=r.tgl;
     if(!anyOn){ offCount++; return; }
     flushOff();
-    const s=getStd(r.jam),f=getFase(r.jam);
-    const d1=s!==null?r.m1-s:null,d2=s!==null?r.m2-s:null;
+    const j1 = r.jam1!=null ? r.jam1 : r.jam;
+    const j2 = r.jam2!=null ? r.jam2 : r.jam;
+    const s1=getStd(j1), s2=getStd(j2);
+    const f1=getFase(j1), f2=getFase(j2);
+    const d1=s1!==null?r.m1-s1:null, d2=s2!==null?r.m2-s2:null;
+    // Kolom "Jam ke-" & "Std" tunggal di tabel ini mengikuti mesin yang
+    // AKTIF di baris tsb (kalau M1 ON pakai jam/std M1, kalau tidak pakai M2)
+    // — tapi Δ M1 dan Δ M2 di atas SELALU dihitung dari jam masing-masing
+    // mesin sendiri, sehingga tetap akurat walau kedua mesin berjalan di
+    // rentang jam berbeda dalam sesi yang sama.
+    const jamTampil = r.s1==='ON' ? j1 : j2;
+    const stdTampil = r.s1==='ON' ? s1 : s2;
+    const faseObj = r.s1==='ON' ? f1 : f2;
+    const faseLabel = (f1&&f2&&f1.fase!==f2.fase)
+      ? ('M1:'+f1.fase+' · M2:'+f2.fase)
+      : (faseObj?faseObj.fase:'—');
     tbody.insertAdjacentHTML('beforeend',`<tr>
-      <td>${r.wkt}</td><td class="tr">${r.jam}</td>
-      <td class="tr"><span class="badge b-std">${s!==null?s+'°C':'—'}</span></td>
+      <td>${r.wkt}</td><td class="tr">${jamTampil!=null?jamTampil:'—'}</td>
+      <td class="tr"><span class="badge b-std">${stdTampil!==null?stdTampil+'°C':'—'}</span></td>
       <td class="tr">${rnd(r.m1)}</td>
       <td class="tr" style="color:${dColor(d1)}">${fmtDelta(d1)}</td>
       <td class="tr">${rnd(r.m2)}</td>
       <td class="tr" style="color:${dColor(d2)}">${fmtDelta(d2)}</td>
       <td><span class="badge ${r.s1==='ON'?'b-on':'b-off'}">${r.s1||'—'}</span></td>
       <td><span class="badge ${r.s2==='ON'?'b-on':'b-off'}">${r.s2||'—'}</span></td>
-      <td><span class="badge b-gray">${f?f.fase:'—'}</span></td>
+      <td><span class="badge b-gray">${faseLabel}</span></td>
     </tr>`);
   });
   flushOff();
@@ -708,13 +754,23 @@ function renderPrintLog(rows){
   const tbody=document.getElementById('plog-body');
   tbody.innerHTML='';
   const avg=arr=>arr.reduce((a,b)=>a+b,0)/arr.length;
-  const byJam={};
+
+  // Kelompokkan TERPISAH per mesin — "Jam ke-N" milik M1 belum tentu
+  // rentang waktu yang sama dengan "Jam ke-N" milik M2, kalau keduanya
+  // mulai ON di waktu berbeda dalam sesi yang sama.
+  const byJam1={}, byJam2={};
   rows.forEach(r=>{
-    if(r.s1!=='ON'&&r.s2!=='ON') return;
-    if(!byJam[r.jam]) byJam[r.jam]={rows:[],wkt:r.wkt,tgl:r.tgl};
-    byJam[r.jam].rows.push(r);
+    if(r.s1==='ON' && r.jam1!=null){
+      if(!byJam1[r.jam1]) byJam1[r.jam1]=[];
+      byJam1[r.jam1].push(r);
+    }
+    if(r.s2==='ON' && r.jam2!=null){
+      if(!byJam2[r.jam2]) byJam2[r.jam2]=[];
+      byJam2[r.jam2].push(r);
+    }
   });
-  const allJams=[...new Set(rows.map(r=>r.jam))].sort((a,b)=>a-b);
+
+  const allJams=[...new Set([...Object.keys(byJam1),...Object.keys(byJam2)].map(Number))].sort((a,b)=>a-b);
   let prevTgl=null, offJams=[];
   function flushOff(){
     if(offJams.length){
@@ -723,30 +779,33 @@ function renderPrintLog(rows){
     }
   }
   allJams.forEach(j=>{
-    const g=byJam[j];
-    if(!g){ offJams.push(j); return; }
+    const g1=byJam1[j], g2=byJam2[j];
+    if(!g1 && !g2){ offJams.push(j); return; }
     flushOff();
-    if(prevTgl&&g.tgl!==prevTgl){ tbody.insertAdjacentHTML('beforeend','<tr class="cd-row"><td colspan="13">▶ Pergantian hari — '+fmtTgl(g.tgl)+'</td></tr>'); }
-    prevTgl=g.tgl;
-    const grp=g.rows;
-    const m1s=grp.map(r=>r.m1),m2s=grp.map(r=>r.m2);
-    const s=getStd(j),f=getFase(j);
-    const d1=s!==null?avg(m1s)-s:null,d2=s!==null?avg(m2s)-s:null;
-    const s1m=grp.filter(r=>r.s1==='ON').length>grp.length/2;
-    const s2m=grp.filter(r=>r.s2==='ON').length>grp.length/2;
+    const refRow = (g1&&g1[0]) || (g2&&g2[0]);
+    if(prevTgl&&refRow.tgl!==prevTgl){ tbody.insertAdjacentHTML('beforeend','<tr class="cd-row"><td colspan="13">▶ Pergantian hari — '+fmtTgl(refRow.tgl)+'</td></tr>'); }
+    prevTgl=refRow.tgl;
+
+    const m1s = g1?g1.map(r=>r.m1):[];
+    const m2s = g2?g2.map(r=>r.m2):[];
+    const s = getStd(j);
+    const f = getFase(j);
+    const d1 = (s!==null&&m1s.length)?avg(m1s)-s:null;
+    const d2 = (s!==null&&m2s.length)?avg(m2s)-s:null;
+
     tbody.insertAdjacentHTML('beforeend',`<tr>
-      <td><strong>${j}</strong></td><td>${g.wkt}</td>
+      <td><strong>${j}</strong></td><td>${refRow.wkt}</td>
       <td><span class="badge b-gray" style="font-size:8px;">${f?f.fase:'—'}</span></td>
       <td class="tr"><span class="badge b-std">${s!==null?s+'°C':'—'}</span></td>
-      <td class="tr"><strong>${rnd(avg(m1s))}</strong></td>
-      <td class="tr" style="color:#888780;">${rnd(Math.min(...m1s))}</td>
-      <td class="tr" style="color:#993C1D;">${rnd(Math.max(...m1s))}</td>
+      <td class="tr"><strong>${m1s.length?rnd(avg(m1s)):'—'}</strong></td>
+      <td class="tr" style="color:#888780;">${m1s.length?rnd(Math.min(...m1s)):'—'}</td>
+      <td class="tr" style="color:#993C1D;">${m1s.length?rnd(Math.max(...m1s)):'—'}</td>
       <td class="tr" style="color:${dColor(d1)}">${fmtDelta(d1)}</td>
-      <td class="tr"><strong>${rnd(avg(m2s))}</strong></td>
-      <td class="tr" style="color:#888780;">${rnd(Math.min(...m2s))}</td>
-      <td class="tr" style="color:#993C1D;">${rnd(Math.max(...m2s))}</td>
+      <td class="tr"><strong>${m2s.length?rnd(avg(m2s)):'—'}</strong></td>
+      <td class="tr" style="color:#888780;">${m2s.length?rnd(Math.min(...m2s)):'—'}</td>
+      <td class="tr" style="color:#993C1D;">${m2s.length?rnd(Math.max(...m2s)):'—'}</td>
       <td class="tr" style="color:${dColor(d2)}">${fmtDelta(d2)}</td>
-      <td><span class="badge ${s1m?'b-on':'b-off'}">${s1m?'ON':'OFF'}</span> <span class="badge ${s2m?'b-on':'b-off'}">${s2m?'ON':'OFF'}</span></td>
+      <td><span class="badge ${m1s.length?'b-on':'b-off'}">${m1s.length?'ON':'OFF'}</span> <span class="badge ${m2s.length?'b-on':'b-off'}">${m2s.length?'ON':'OFF'}</span></td>
     </tr>`);
   });
   flushOff();
@@ -763,7 +822,8 @@ function maxDS(val, n, color){
 
 function buatGrafik(rows){
   const labels   = buildLabels(rows);
-  const stdData  = rows.map(r=>getStd(r.jam));
+  const stdData1 = rows.map(r=>getStd(r.jam1!=null?r.jam1:r.jam));
+  const stdData2 = rows.map(r=>getStd(r.jam2!=null?r.jam2:r.jam));
   const m1Data   = rows.map(r=>r.s1==='ON'?r.m1:null);
   const m2Data   = rows.map(r=>r.s2==='ON'?r.m2:null);
   const on1      = rows.filter(r=>r.s1==='ON').map(r=>r.m1);
@@ -796,7 +856,7 @@ function buatGrafik(rows){
     data: {
       labels: labels,
       datasets: [
-        {label:'Standar', data:stdData, borderColor:'#185FA5', borderWidth:2, pointRadius:0, tension:0.3, fill:false},
+        {label:'Standar', data:stdData1, borderColor:'#185FA5', borderWidth:2, pointRadius:0, tension:0.3, fill:false},
         {label:'Mason 1', data:m1Data, borderColor:'#1D9E75', backgroundColor:'rgba(29,158,117,0.07)', borderWidth:2.5, pointRadius:0, pointBackgroundColor:'#1D9E75', tension:0.2, fill:true, spanGaps:false},
         maxDS(mx1, n, '#E24B4A')
       ]
@@ -815,7 +875,7 @@ function buatGrafik(rows){
     data: {
       labels: labels,
       datasets: [
-        {label:'Standar', data:stdData, borderColor:'#185FA5', borderWidth:2, pointRadius:0, tension:0.3, fill:false},
+        {label:'Standar', data:stdData2, borderColor:'#185FA5', borderWidth:2, pointRadius:0, tension:0.3, fill:false},
         {label:'Mason 2', data:m2Data, borderColor:'#D85A30', backgroundColor:'rgba(216,90,48,0.07)', borderWidth:2.5, pointRadius:0, pointBackgroundColor:'#D85A30', tension:0.2, fill:true, spanGaps:false},
         maxDS(mx2, n, '#E24B4A')
       ]
@@ -851,12 +911,23 @@ function renderAnalisa(rows){
   const avg  = arr => arr.reduce((a,b)=>a+b,0)/arr.length;
   const m1s  = onRows.map(r=>r.m1);
   const m2s  = onRows.map(r=>r.m2);
-  const utama = rows.filter(r=>r.jam>=3&&r.jam<=8&&r.s1==='ON');
+  const utama1 = rows.filter(r=>r.jam1>=3&&r.jam1<=8&&r.s1==='ON');
+  const utama2 = rows.filter(r=>r.jam2>=3&&r.jam2<=8&&r.s2==='ON');
   const maxM1 = Math.max(...rows.filter(r=>r.s1==='ON').map(r=>r.m1));
   const maxM2 = Math.max(...rows.filter(r=>r.s2==='ON').map(r=>r.m2));
-  const totalJam = Math.max(...rows.map(r=>r.jam));
+  const jam1Vals = rows.map(r=>r.jam1).filter(v=>v!=null);
+  const jam2Vals = rows.map(r=>r.jam2).filter(v=>v!=null);
+  const totalJam1 = jam1Vals.length?Math.max(...jam1Vals):null;
+  const totalJam2 = jam2Vals.length?Math.max(...jam2Vals):null;
   const dur  = Math.round((new Date(rows[rows.length-1].waktu)-new Date(rows[0].waktu))/36e5*10)/10;
-  const devRows = rows.filter(r=>{ const s=getStd(r.jam); return s!==null&&(r.s1==='ON'||r.s2==='ON')&&Math.abs(r.m1-s)>5; });
+  // Baris dianggap menyimpang kalau salah satu mesin yang ON menyimpang
+  // >5°C dari standar JAM-NYA SENDIRI (bukan jam gabungan)
+  const devRows = rows.filter(r=>{
+    const sd1=getStd(r.jam1), sd2=getStd(r.jam2);
+    const dev1 = r.s1==='ON' && sd1!==null && Math.abs(r.m1-sd1)>5;
+    const dev2 = r.s2==='ON' && sd2!==null && Math.abs(r.m2-sd2)>5;
+    return dev1||dev2;
+  });
   const onTotal = rows.filter(r=>r.s1==='ON'||r.s2==='ON').length;
   const pctDev  = onTotal ? Math.round(devRows.length/onTotal*100) : 0;
 
@@ -877,19 +948,27 @@ function renderAnalisa(rows){
 
   h += row('Suhu rata-rata sesi (saat ON)', rnd(avg(m1s))+'°C', rnd(avg(m2s))+'°C', 'Seluruh siklus aktif');
   h += row('Suhu maksimum tercapai', maxM1+'°C', maxM2+'°C', 'Fase utama std 120°C');
-  if(utama.length) h += row('Rata-rata fase utama (Jam 3–8)', rnd(avg(utama.map(r=>r.m1)))+'°C', rnd(avg(utama.map(r=>r.m2)))+'°C', 'Standar: 120°C');
+  if(utama1.length||utama2.length) h += row('Rata-rata fase utama (Jam 3–8)', utama1.length?rnd(avg(utama1.map(r=>r.m1)))+'°C':'—', utama2.length?rnd(avg(utama2.map(r=>r.m2)))+'°C':'—', 'Standar: 120°C');
   h += row('Durasi pengeringan aktual', dur+' jam', dur+' jam', 'Standar: 20–26 jam');
-  h += row('Jam pengeringan selesai', 'Jam ke-'+totalJam, 'Jam ke-'+totalJam, 'Target: Jam 25–26');
+  h += row('Jam pengeringan selesai', totalJam1!=null?'Jam ke-'+totalJam1:'—', totalJam2!=null?'Jam ke-'+totalJam2:'—', 'Target: Jam 25–26');
   h += row('Pembacaan menyimpang >5°C (saat ON)', pctDev+'% ('+devRows.length+' baris)', '—', 'Pedoman: setiap jam dicatat');
   h += '</table>';
 
-  // Analisa per fase — hanya fase yang ada data ON
+  // Analisa per fase — dihitung TERPISAH per mesin (jam1 untuk M1, jam2
+  // untuk M2), supaya kalau kedua mesin ada di fase berbeda pada sesi
+  // yang sama, masing-masing tetap dibandingkan ke fase & standar miliknya
+  // sendiri, bukan tercampur.
   const faseMap = {};
-  rows.filter(r=>r.s1==='ON'||r.s2==='ON').forEach(r=>{
-    const f=getFase(r.jam); const s=getStd(r.jam);
+  rows.filter(r=>r.s1==='ON').forEach(r=>{
+    const f=getFase(r.jam1), s=getStd(r.jam1);
     if(!f||s===null) return;
     if(!faseMap[f.fase]) faseMap[f.fase]={std:s, d1s:[], d2s:[], r:f.r};
     faseMap[f.fase].d1s.push(r.m1-s);
+  });
+  rows.filter(r=>r.s2==='ON').forEach(r=>{
+    const f=getFase(r.jam2), s=getStd(r.jam2);
+    if(!f||s===null) return;
+    if(!faseMap[f.fase]) faseMap[f.fase]={std:s, d1s:[], d2s:[], r:f.r};
     faseMap[f.fase].d2s.push(r.m2-s);
   });
 
