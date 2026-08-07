@@ -497,23 +497,43 @@ function grupBySesi(rows){
       : baseKey;
     map[finalKey] = grp;
 
-    // Hitung jam ke- dari selisih waktu sejak awal sesi
-    const t0 = new Date(grp[0].waktu).getTime();
+    // Hitung jam ke- gabungan (dari awal sesi) — masih dipakai untuk
+    // filter dropdown "Fase" yang bersifat umum/netral terhadap mesin
+    const tSesi = new Date(grp[0].waktu).getTime();
     grp.forEach(r=>{
-      const menit = (new Date(r.waktu).getTime() - t0) / 60000;
+      const menit = (new Date(r.waktu).getTime() - tSesi) / 60000;
       r.jam = Math.min(26, Math.floor(menit / 60) + 1);
     });
 
     // Hitung jam ke- TERPISAH per mesin (r.jam1, r.jam2) — dari transisi
-    // OFF→ON PERTAMA masing-masing mesin di dalam sesi ini, bukan dari
-    // t0 gabungan di atas. Ini sumber data tunggal dipakai oleh grafik,
-    // kartu ringkasan, dan log — supaya kurva/label Standar tiap mesin
+    // OFF→ON mesin itu sendiri di dalam sesi ini, bukan dari t0 gabungan
+    // di atas. Ini sumber data tunggal dipakai oleh grafik, kartu
+    // ringkasan, dan log — supaya kurva/label Standar tiap mesin
     // mengikuti jam mulai mesin itu sendiri. Penting saat kedua mesin
     // berjalan di rentang waktu berbeda dalam satu sesi (misal M1 sudah
     // operasional, M2 baru menyusul uji coba).
+    //
+    // PENTING: bukan sekadar ON PERTAMA yang muncul — kalau dipakai
+    // mentah, satu baca ON sesaat/blip (misal gangguan sensor sebentar
+    // sebelum mesin benar-benar dinyalakan) bisa salah dianggap sebagai
+    // awal pengeringan. Jadi dicari transisi OFF→ON PERTAMA yang
+    // bertahan ON minimal 1 jam berturut-turut — blip yang lebih pendek
+    // dari itu dilewati dan dianggap bukan awal sungguhan.
     function t0Mesin(sField){
-      const on = grp.find(r=>r[sField]==='ON');
-      return on ? new Date(on.waktu).getTime() : null;
+      const MIN_SUSTAIN_MS = 60*60*1000; // minimal 1 jam menyala berturut-turut
+      for(let i=0;i<grp.length;i++){
+        if(grp[i][sField]!=='ON') continue;
+        if(i>0 && grp[i-1][sField]==='ON') continue; // bukan awal transisi, lewati
+        const tStart = new Date(grp[i].waktu).getTime();
+        let j=i;
+        while(j<grp.length && grp[j][sField]==='ON') j++;
+        const tEndOn = new Date(grp[j-1].waktu).getTime();
+        if(tEndOn - tStart >= MIN_SUSTAIN_MS) return tStart;
+      }
+      // Fallback: kalau tidak ada streak yang cukup panjang (sesi pendek/uji
+      // coba singkat), pakai ON pertama apa adanya daripada tidak sama sekali
+      const firstOn = grp.find(r=>r[sField]==='ON');
+      return firstOn ? new Date(firstOn.waktu).getTime() : null;
     }
     const t0m1 = t0Mesin('s1');
     const t0m2 = t0Mesin('s2');
