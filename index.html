@@ -251,7 +251,8 @@ footer{text-align:center;font-size:11px;color:#B4B2A9;padding:16px;}
   <!-- METRIK -->
   <div class="metric-grid">
     <div class="mc hl"><div class="mc-l">Sesi pengeringan</div><div class="mc-v" id="m-tgl" style="font-size:13px;margin-top:3px;">—</div></div>
-    <div class="mc hl"><div class="mc-l">Jam berjalan</div><div class="mc-v"><span id="m-jam">—</span><span class="mc-u"> / 26</span></div><div class="mc-s" id="m-std">Standar: —</div></div>
+    <div class="mc hl1"><div class="mc-l">Jam M1</div><div class="mc-v"><span id="m1-jam">—</span><span class="mc-u"> / 26</span></div><div class="mc-s" id="m1-std">Standar: —</div></div>
+    <div class="mc hl2"><div class="mc-l">Jam M2</div><div class="mc-v"><span id="m2-jam">—</span><span class="mc-u"> / 26</span></div><div class="mc-s" id="m2-std">Standar: —</div></div>
     <div class="mc hl1"><div class="mc-l">Mason 1 (terakhir)</div><div class="mc-v"><span id="m1v">—</span><span class="mc-u"> °C</span></div><div class="mc-s" id="m1d">vs standar: —</div><div class="mc-m" id="m1max">Maks: —</div></div>
     <div class="mc hl2"><div class="mc-l">Mason 2 (terakhir)</div><div class="mc-v"><span id="m2v">—</span><span class="mc-u"> °C</span></div><div class="mc-s" id="m2d">vs standar: —</div><div class="mc-m" id="m2max">Maks: —</div></div>
     <div class="mc"><div class="mc-l">Total pembacaan</div><div class="mc-v" id="mtot">—</div><div class="mc-s">Interval ESP32</div></div>
@@ -636,7 +637,6 @@ function updateMetrics(rows){
   // fase di atas) — pakai jam yang PALING JAUH di antara kedua mesin,
   // supaya badge mengikuti mesin yang paling aktif/maju prosesnya.
   const jamRef = Math.max(last.jam1!==undefined?last.jam1:0, last.jam2!==undefined?last.jam2:0) || last.jam;
-  const s=getStd(jamRef);
   const j1 = last.jam1!==undefined?last.jam1:last.jam;
   const j2 = last.jam2!==undefined?last.jam2:last.jam;
   const s1 = getStd(j1), s2 = getStd(j2);
@@ -655,8 +655,10 @@ function updateMetrics(rows){
   const dates=[...new Set((allData[key]||[]).map(r=>r.tgl))];
   document.getElementById('m-tgl').textContent =
     dates.length>1 ? fmtTgl(dates[0])+' – '+fmtTgl(dates[dates.length-1]) : fmtTgl(key);
-  document.getElementById('m-jam').textContent = jamRef;
-  document.getElementById('m-std').textContent = 'Standar: '+(s!==null?s+'°C':'Udara segar');
+  document.getElementById('m1-jam').textContent = j1!=null ? j1 : '—';
+  document.getElementById('m1-std').textContent = 'Standar: '+(s1!==null?s1+'°C':(j1==null?'Belum ON':'Udara segar'));
+  document.getElementById('m2-jam').textContent = j2!=null ? j2 : '—';
+  document.getElementById('m2-std').textContent = 'Standar: '+(s2!==null?s2+'°C':(j2==null?'Belum ON':'Udara segar'));
   document.getElementById('m1v').textContent   = rnd(last.m1);
   document.getElementById('m2v').textContent   = rnd(last.m2);
   document.getElementById('m1d').textContent   = 'vs standar: '+fmtDelta(d1);
